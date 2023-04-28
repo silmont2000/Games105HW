@@ -25,20 +25,24 @@ def load_motion_data(bvh_file_path):
         motion_data = np.concatenate(motion_data, axis=0)
     return motion_data
 
-def is_joint_head(s):
-    return s.strip().startswith('ROOT') | s.strip().startswith('JOINT') | s.strip().startswith('End') 
 
-def is_joint_end(s):
-    return s.strip().endswith('}')
+def part1_calculate_T_pose(bvh_file_path):
+    """请填写以下内容
+    输入： bvh 文件路径
+    输出:
+        joint_name: List[str]，字符串列表，包含着所有关节的名字
+        joint_parent: List[int]，整数列表，包含着所有关节的父关节的索引,根节点的父关节索引为-1
+        joint_offset: np.ndarray，形状为(M, 3)的numpy数组，包含着所有关节的偏移量
 
-joint_names = []
-joint_parents = []
-joint_offsets = np.array([[0, 0, 0]])
+    Tips:
+        joint_name顺序应该和bvh一致
+    """
+    joint_names = []
+    joint_parents = []
+    joint_offsets = np.array([[0, 0, 0]])
 
-def create_tree(f):
-    global joint_names,joint_parents,joint_offsets
-
-    lines = f.readlines()
+    with open(bvh_file_path, 'r') as f:
+        lines = f.readlines()
     # Find the ROOT joint
     root_idx = lines.index('ROOT RootJoint\n')
     # Parse the rest of the hierarchy structure
@@ -82,40 +86,43 @@ def create_tree(f):
             offset_values = [float(x) for x in parts[1:]]
             # 将偏移量添加到 joint_offset 中
             joint_offsets = np.append(joint_offsets, [offset_values], axis=0)
-    
-    print(joint_names)
-    print(joint_parents)
-    print(joint_offsets)
-def part1_calculate_T_pose(bvh_file_path):
-    """请填写以下内容
-    输入： bvh 文件路径
-    输出:
-        joint_name: List[str]，字符串列表，包含着所有关节的名字
-        joint_parent: List[int]，整数列表，包含着所有关节的父关节的索引,根节点的父关节索引为-1
-        joint_offset: np.ndarray，形状为(M, 3)的numpy数组，包含着所有关节的偏移量
-
-    Tips:
-        joint_name顺序应该和bvh一致
-    """
-    with open(bvh_file_path, 'r') as f:
-        create_tree(f)
     return joint_names, joint_parents, joint_offsets
 
 
 def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data, frame_id):
-    """请填写以下内容
-    输入: part1 获得的关节名字，父节点列表，偏移量列表
-        motion_data: np.ndarray，形状为(N,X)的numpy数组，其中N为帧数，X为Channel数
-        frame_id: int，需要返回的帧的索引
-    输出:
-        joint_positions: np.ndarray，形状为(M, 3)的numpy数组，包含着所有关节的全局位置
-        joint_orientations: np.ndarray，形状为(M, 4)的numpy数组，包含着所有关节的全局旋转(四元数)
-    Tips:
-        1. joint_orientations的四元数顺序为(x, y, z, w)
-        2. from_euler时注意使用大写的XYZ
-    """
-    joint_positions = None
-    joint_orientations = None
+    joint_positions = np.empty((len(joint_offset), 3))
+    joint_orientations = np.empty((len(joint_offset), 4))
+    idx_offset = 0
+    
+    for idx, offset in enumerate(joint_offset):
+        cur_joint_name = joint_name[idx]
+        parent_idx = joint_parent[idx]
+
+        if cur_joint_name.startswith('RootJoint'):
+            joint_positions[idx] = motion_data[frame_id, :3]
+
+            frame_rot_euler = np.deg2rad(motion_data[frame_id, 3:6])
+            rotation = R.from_euler('XYZ', frame_rot_euler)
+            joint_orientations[idx] = rotation.as_quat()
+
+        elif cur_joint_name.endswith('_end'):
+            joint_positions[idx] = joint_positions[parent_idx] + np.array([joint_offset[idx]])
+
+            frame_rot_euler = [0, 0, 0]
+            rotation = R.from_euler('XYZ', frame_rot_euler)
+            quaternion = rotation.as_quat()
+            joint_orientations[idx] = quaternion * joint_orientations[parent_idx]
+
+            idx_offset += 1
+
+        else:
+            joint_positions[idx] = joint_positions[parent_idx] + np.array([joint_offset[idx]])
+
+            frame_rot_euler = np.deg2rad(motion_data[frame_id, 3*(idx-idx_offset):3*(idx-idx_offset+1)])
+            rotation = R.from_euler('XYZ', frame_rot_euler)
+            quaternion = rotation.as_quat()
+            joint_orientations[idx] = quaternion * joint_orientations[parent_idx]
+
     return joint_positions, joint_orientations
 
 
