@@ -90,8 +90,19 @@ def part1_calculate_T_pose(bvh_file_path):
 
 
 def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data, frame_id):
-    joint_positions = np.empty((len(joint_offset), 3))
-    joint_orientations = np.empty((len(joint_offset), 4))
+    """请填写以下内容
+    输入: part1 获得的关节名字，父节点列表，偏移量列表
+        motion_data: np.ndarray，形状为(N,X)的numpy数组，其中N为帧数，X为Channel数
+        frame_id: int，需要返回的帧的索引
+    输出:
+        joint_positions: np.ndarray，形状为(M, 3)的numpy数组，包含着所有关节的全局位置
+        joint_orientations: np.ndarray，形状为(M, 4)的numpy数组，包含着所有关节的全局旋转(四元数)
+    Tips:
+        1. joint_orientations的四元数顺序为(x, y, z, w)
+        2. from_euler时注意使用大写的XYZ
+    """
+    joint_positions = np.zeros((len(joint_offset), 3))
+    joint_orientations = np.zeros((len(joint_offset), 4))
     idx_offset = 0
     
     for idx, offset in enumerate(joint_offset):
@@ -101,27 +112,35 @@ def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data
         if cur_joint_name.startswith('RootJoint'):
             joint_positions[idx] = motion_data[frame_id, :3]
 
-            frame_rot_euler = np.deg2rad(motion_data[frame_id, 3:6])
-            rotation = R.from_euler('XYZ', frame_rot_euler)
-            joint_orientations[idx] = rotation.as_quat()
+            rotation = R.from_euler('XYZ', motion_data[frame_id, 3:6],degrees=True).as_matrix()
+            joint_orientations_tmp =  R.from_matrix(rotation).as_quat()
+            joint_orientations[idx] = [joint_orientations_tmp[1], joint_orientations_tmp[2], joint_orientations_tmp[3],joint_orientations_tmp[0]]
+            
 
         elif cur_joint_name.endswith('_end'):
-            joint_positions[idx] = joint_positions[parent_idx] + np.array([joint_offset[idx]])
+            offset=np.concatenate(([0], joint_offset[idx]))
+            q_result = joint_orientations[parent_idx] * offset * joint_orientations[parent_idx].conj()
+            joint_positions[idx] = joint_positions[parent_idx]+q_result[1:]
+            # joint_positions[idx] = joint_positions[parent_idx] + joint_offset[idx]
 
             frame_rot_euler = [0, 0, 0]
             rotation = R.from_euler('XYZ', frame_rot_euler)
             quaternion = rotation.as_quat()
-            joint_orientations[idx] = quaternion * joint_orientations[parent_idx]
-
+            joint_orientations_tmp = joint_orientations[parent_idx]*quaternion
+            joint_orientations[idx] = [joint_orientations_tmp[1], joint_orientations_tmp[2], joint_orientations_tmp[3],joint_orientations_tmp[0]]
             idx_offset += 1
 
         else:
-            joint_positions[idx] = joint_positions[parent_idx] + np.array([joint_offset[idx]])
+            offset=np.concatenate(([0], joint_offset[idx]))
+            q_result = joint_orientations[parent_idx] * offset * joint_orientations[parent_idx].conj()
+            joint_positions[idx] = joint_positions[parent_idx]+q_result[1:]
+            # joint_positions[idx] = joint_positions[parent_idx] + joint_offset[idx]
 
-            frame_rot_euler = np.deg2rad(motion_data[frame_id, 3*(idx-idx_offset):3*(idx-idx_offset+1)])
-            rotation = R.from_euler('XYZ', frame_rot_euler)
-            quaternion = rotation.as_quat()
-            joint_orientations[idx] = quaternion * joint_orientations[parent_idx]
+            rotation = R.from_euler('XYZ', motion_data[frame_id, 3*(idx-idx_offset+1):3*(idx-idx_offset+2)],degrees=True).as_matrix()
+            quaternion = R.from_matrix(rotation).as_quat()
+            joint_orientations_tmp = joint_orientations[parent_idx]*quaternion
+            joint_orientations[idx] = [joint_orientations_tmp[1], joint_orientations_tmp[2], joint_orientations_tmp[3],joint_orientations_tmp[0]]
+            
 
     return joint_positions, joint_orientations
 

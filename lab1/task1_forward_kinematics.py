@@ -18,7 +18,7 @@ def part2_one_pose(viewer, bvh_file_path):
     """
     joint_name, joint_parent, joint_offset = part1_calculate_T_pose(bvh_file_path)
     motion_data = load_motion_data(bvh_file_path)
-    joint_positions, joint_orientations = part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data, 0)
+    joint_positions, joint_orientations = part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data, 10)
     viewer.show_pose(joint_name, joint_positions, joint_orientations)
     viewer.run()
 
