@@ -63,22 +63,23 @@ def part1_calculate_T_pose(bvh_file_path):
     # Find the child joints and add them to the stack
     for i in range(len(joint_hierarchy)):
         line = joint_hierarchy[i].strip()
-        if (line.startswith("JOINT")) | (line.startswith("End Site")):
-            if line.startswith("End Site"):
+        if (line.startswith("JOINT")) | (line.startswith("End")):
+            if line.startswith("End"):
                 child_name = f'{joint_name}_end'
             else:
                 child_name = line.split()[1]
 
             joint_names.append(child_name)
             joint_parents.append(joint_names.index(joint_name))
-            if line.startswith("JOINT"):
-                stack.append((child_name, joint_name))
-                joint_name=child_name
+
+            # if line.startswith("JOINT"):
+            stack.append((child_name, joint_name))
+            joint_name=child_name
         elif line.startswith("}"):
             if len(stack)==0:
                 joint_name='RootJoint'
             else:
-                joint_name, parent_name=stack.pop()
+                tmp, joint_name=stack.pop()
         elif line.startswith("OFFSET"):
             # 使用字符串的 split() 方法将字符串按空格分割成多个部分
             parts = line.split()
@@ -111,35 +112,33 @@ def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data
 
         if cur_joint_name.startswith('RootJoint'):
             joint_positions[idx] = motion_data[frame_id, :3]
+            joint_orientations[idx] = R.from_euler('XYZ', motion_data[frame_id, 3:6],degrees=True).as_quat()
 
-            rotation = R.from_euler('XYZ', motion_data[frame_id, 3:6],degrees=True).as_matrix()
-            joint_orientations_tmp =  R.from_matrix(rotation).as_quat()
-            joint_orientations[idx] = [joint_orientations_tmp[1], joint_orientations_tmp[2], joint_orientations_tmp[3],joint_orientations_tmp[0]]
             
+        # elif (cur_joint_name.endswith('lHip') | cur_joint_name.endswith('lKnee')| cur_joint_name.endswith('lAnkle')| cur_joint_name.endswith('lToeJoint')):
+        #     rotation = R.from_euler('XYZ', motion_data[frame_id, 3*(idx-idx_offset+1):3*(idx-idx_offset+2)],degrees=True).as_matrix()
+        #     rot_matrix_p=R.from_quat(joint_orientations[parent_idx]).as_matrix()
+        #     tmp = rot_matrix_p.dot(rotation)
+        #     joint_orientations[idx]=R.from_matrix(tmp).as_quat()
+        #     rot_matrix=R.from_quat(joint_orientations[idx]).as_matrix()
+        #     joint_positions[idx] = joint_positions[parent_idx]+rot_matrix_p.dot(offset)
+
+
 
         elif cur_joint_name.endswith('_end'):
-            offset=np.concatenate(([0], joint_offset[idx]))
-            q_result = joint_orientations[parent_idx] * offset * joint_orientations[parent_idx].conj()
+            q_result = joint_orientations[parent_idx] * np.concatenate(([0], offset)) * joint_orientations[parent_idx].conj()
             joint_positions[idx] = joint_positions[parent_idx]+q_result[1:]
-            # joint_positions[idx] = joint_positions[parent_idx] + joint_offset[idx]
-
-            frame_rot_euler = [0, 0, 0]
-            rotation = R.from_euler('XYZ', frame_rot_euler)
-            quaternion = rotation.as_quat()
-            joint_orientations_tmp = joint_orientations[parent_idx]*quaternion
-            joint_orientations[idx] = [joint_orientations_tmp[1], joint_orientations_tmp[2], joint_orientations_tmp[3],joint_orientations_tmp[0]]
             idx_offset += 1
 
         else:
-            offset=np.concatenate(([0], joint_offset[idx]))
-            q_result = joint_orientations[parent_idx] * offset * joint_orientations[parent_idx].conj()
-            joint_positions[idx] = joint_positions[parent_idx]+q_result[1:]
-            # joint_positions[idx] = joint_positions[parent_idx] + joint_offset[idx]
-
             rotation = R.from_euler('XYZ', motion_data[frame_id, 3*(idx-idx_offset+1):3*(idx-idx_offset+2)],degrees=True).as_matrix()
-            quaternion = R.from_matrix(rotation).as_quat()
-            joint_orientations_tmp = joint_orientations[parent_idx]*quaternion
-            joint_orientations[idx] = [joint_orientations_tmp[1], joint_orientations_tmp[2], joint_orientations_tmp[3],joint_orientations_tmp[0]]
+            rot_matrix_p=R.from_quat(joint_orientations[parent_idx]).as_matrix()
+            tmp = rot_matrix_p.dot(rotation)
+            joint_orientations[idx]=R.from_matrix(tmp).as_quat()
+            rot_matrix=R.from_quat(joint_orientations[idx]).as_matrix()
+            joint_positions[idx] = joint_positions[parent_idx]+rot_matrix_p.dot(offset)
+
+
             
 
     return joint_positions, joint_orientations
