@@ -113,33 +113,17 @@ def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data
         if cur_joint_name.startswith('RootJoint'):
             joint_positions[idx] = motion_data[frame_id, :3]
             joint_orientations[idx] = R.from_euler('XYZ', motion_data[frame_id, 3:6],degrees=True).as_quat()
-
-            
-        # elif (cur_joint_name.endswith('lHip') | cur_joint_name.endswith('lKnee')| cur_joint_name.endswith('lAnkle')| cur_joint_name.endswith('lToeJoint')):
-        #     rotation = R.from_euler('XYZ', motion_data[frame_id, 3*(idx-idx_offset+1):3*(idx-idx_offset+2)],degrees=True).as_matrix()
-        #     rot_matrix_p=R.from_quat(joint_orientations[parent_idx]).as_matrix()
-        #     tmp = rot_matrix_p.dot(rotation)
-        #     joint_orientations[idx]=R.from_matrix(tmp).as_quat()
-        #     rot_matrix=R.from_quat(joint_orientations[idx]).as_matrix()
-        #     joint_positions[idx] = joint_positions[parent_idx]+rot_matrix_p.dot(offset)
-
-
-
         elif cur_joint_name.endswith('_end'):
             q_result = joint_orientations[parent_idx] * np.concatenate(([0], offset)) * joint_orientations[parent_idx].conj()
             joint_positions[idx] = joint_positions[parent_idx]+q_result[1:]
             idx_offset += 1
-
         else:
             rotation = R.from_euler('XYZ', motion_data[frame_id, 3*(idx-idx_offset+1):3*(idx-idx_offset+2)],degrees=True).as_matrix()
             rot_matrix_p=R.from_quat(joint_orientations[parent_idx]).as_matrix()
             tmp = rot_matrix_p.dot(rotation)
             joint_orientations[idx]=R.from_matrix(tmp).as_quat()
-            rot_matrix=R.from_quat(joint_orientations[idx]).as_matrix()
+
             joint_positions[idx] = joint_positions[parent_idx]+rot_matrix_p.dot(offset)
-
-
-            
 
     return joint_positions, joint_orientations
 
@@ -154,5 +138,7 @@ def part3_retarget_func(T_pose_bvh_path, A_pose_bvh_path):
         两个bvh的joint name顺序可能不一致哦(
         as_euler时也需要大写的XYZ
     """
+    T_data=load_motion_data(T_pose_bvh_path)
+    A_data=load_motion_data(A_pose_bvh_path)
     motion_data = None
     return motion_data
