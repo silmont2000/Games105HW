@@ -145,14 +145,13 @@ def part3_retarget_func(T_pose_bvh_path, A_pose_bvh_path):
         两个bvh的joint name顺序可能不一致哦(
         as_euler时也需要大写的XYZ
     """
-    T_data=load_single_frame_motion_data(T_pose_bvh_path)
     A_data=load_single_frame_motion_data(A_pose_bvh_path)
     T_joint_names, _, _=part1_calculate_T_pose(T_pose_bvh_path)
     A_joint_names, _, _=part1_calculate_T_pose(A_pose_bvh_path)
-    # lShoulderInx=A_joint_names.index("lShoulder")
-    # rShoulderInx=A_joint_names.index("rShoulder")
-    lShoulderMatrix= R.from_euler('XYZ', [0,0,45],degrees=True).as_matrix()
-    rShoulderMatrix= R.from_euler('XYZ', [0,0,-45],degrees=True).as_matrix()
+    # 想了一下，感觉这里肯定是逆向乘回去，但为什么正负号和我理解的不一样，应该是因为定义顺逆时针时，模型是背面朝着我的（也就是和我同一个方向），或者这是逆矩阵刚好符号变了
+    # 总之正负都试一试
+    lShoulderMatrix= R.from_euler('XYZ', [0,0,-45],degrees=True).as_matrix()
+    rShoulderMatrix= R.from_euler('XYZ', [0,0,45],degrees=True).as_matrix()
     # 因为是根据T的拿A的，中间需要掠过的end数不一定相等
     A_name_skip_cnt=[]
     ignore_cnt=0
@@ -161,26 +160,27 @@ def part3_retarget_func(T_pose_bvh_path, A_pose_bvh_path):
                 ignore_cnt=ignore_cnt+1
         A_name_skip_cnt.append(ignore_cnt)
     motion_data = []
-    for frame_id in range(T_data.shape[0]):
+    # 不能用_data的shape呀！要播放的是A_data
+    for frame_id in range(A_data.shape[0]):
         single_frame_motion_data = []
         for joint_name in T_joint_names:
             A_pose_index=A_joint_names.index(joint_name)
             if joint_name=="RootJoint":
                 # rootJoint
-                single_frame_motion_data.append(np.array(A_data[frame_id,:3]).reshape(1,-1))
-                single_frame_motion_data.append(np.array(A_data[frame_id,3:6]).reshape(1,-1))
+                single_frame_motion_data.append(A_data[frame_id,:3])
+                single_frame_motion_data.append(A_data[frame_id,3:6])
             elif joint_name=="lShoulder":
                 original_data=R.from_euler('XYZ', A_data[frame_id,(A_pose_index-A_name_skip_cnt[A_pose_index]+1)*3:(A_pose_index-A_name_skip_cnt[A_pose_index]+2)*3],degrees=True).as_matrix()
                 result_data=original_data.dot(lShoulderMatrix)
-                single_frame_motion_data.append(np.array([R.from_matrix(result_data).as_euler('XYZ', degrees=True)]))
+                single_frame_motion_data.append(R.from_matrix(result_data).as_euler('XYZ', degrees=True))
             elif joint_name=="rShoulder":
                 original_data=R.from_euler('XYZ', A_data[frame_id,(A_pose_index-A_name_skip_cnt[A_pose_index]+1)*3:(A_pose_index-A_name_skip_cnt[A_pose_index]+2)*3],degrees=True).as_matrix()
                 result_data=original_data.dot(rShoulderMatrix)
-                single_frame_motion_data.append(np.array([R.from_matrix(result_data).as_euler('XYZ', degrees=True)]))
+                single_frame_motion_data.append(R.from_matrix(result_data).as_euler('XYZ', degrees=True))
             elif joint_name.endswith('_end'):
                 continue
             else:
-                single_frame_motion_data.append(np.array(A_data[frame_id,(A_pose_index-A_name_skip_cnt[A_pose_index]+1)*3:(A_pose_index-A_name_skip_cnt[A_pose_index]+2)*3]).reshape(1,-1))
+                single_frame_motion_data.append(A_data[frame_id,(A_pose_index-A_name_skip_cnt[A_pose_index]+1)*3:(A_pose_index-A_name_skip_cnt[A_pose_index]+2)*3])
         single_frame_motion_data = np.concatenate(single_frame_motion_data, axis=0)
         motion_data.append(single_frame_motion_data)
     return np.array(motion_data)
