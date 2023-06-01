@@ -5,7 +5,7 @@ tip_words={
     "ROOT","JOINT","End"
 }
 
-def load_motion_data(bvh_file_path):
+def load_single_frame_motion_data(bvh_file_path):
     """part2 辅助函数，读取bvh文件"""
     """返回的是行列保持原样的数据"""
     joint_name = []
@@ -16,14 +16,14 @@ def load_motion_data(bvh_file_path):
         for i in range(len(lines)):
             if lines[i].startswith('Frame Time'):
                 break
-        motion_data = []
+        single_frame_motion_data = []
         for line in lines[i+1:]:
             data = [float(x) for x in line.split()]
             if len(data) == 0:
                 break
-            motion_data.append(np.array(data).reshape(1,-1))
-        motion_data = np.concatenate(motion_data, axis=0)
-    return motion_data
+            single_frame_motion_data.append(np.array(data).reshape(1,-1))
+        single_frame_motion_data = np.concatenate(single_frame_motion_data, axis=0)
+    return single_frame_motion_data
 
 
 def part1_calculate_T_pose(bvh_file_path):
@@ -90,10 +90,10 @@ def part1_calculate_T_pose(bvh_file_path):
     return joint_names, joint_parents, joint_offsets
 
 
-def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data, frame_id):
+def part2_forward_kinematics(joint_name, joint_parent, joint_offset, single_frame_motion_data, frame_id):
     """请填写以下内容
     输入: part1 获得的关节名字，父节点列表，偏移量列表
-        motion_data: np.ndarray，形状为(N,X)的numpy数组，其中N为帧数，X为Channel数
+        single_frame_motion_data: np.ndarray，形状为(N,X)的numpy数组，其中N为帧数，X为Channel数
         frame_id: int，需要返回的帧的索引
     输出:
         joint_positions: np.ndarray，形状为(M, 3)的numpy数组，包含着所有关节的全局位置
@@ -102,27 +102,34 @@ def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data
         1. joint_orientations的四元数顺序为(x, y, z, w)
         2. from_euler时注意使用大写的XYZ
     """
+    # 初始化
     joint_positions = np.zeros((len(joint_offset), 3))
     joint_orientations = np.zeros((len(joint_offset), 4))
     idx_offset = 0
-    
+    # 遍历offset，也就是便利所有节点
     for idx, offset in enumerate(joint_offset):
         cur_joint_name = joint_name[idx]
         parent_idx = joint_parent[idx]
 
         if cur_joint_name.startswith('RootJoint'):
-            joint_positions[idx] = motion_data[frame_id, :3]
-            joint_orientations[idx] = R.from_euler('XYZ', motion_data[frame_id, 3:6],degrees=True).as_quat()
+            # 根节点，多三个position数据
+            joint_positions[idx] = single_frame_motion_data[frame_id, :3]
+            joint_orientations[idx] = R.from_euler('XYZ', single_frame_motion_data[frame_id, 3:6],degrees=True).as_quat()
         elif cur_joint_name.endswith('_end'):
             q_result = joint_orientations[parent_idx] * np.concatenate(([0], offset)) * joint_orientations[parent_idx].conj()
             joint_positions[idx] = joint_positions[parent_idx]+q_result[1:]
             idx_offset += 1
         else:
-            rotation = R.from_euler('XYZ', motion_data[frame_id, 3*(idx-idx_offset+1):3*(idx-idx_offset+2)],degrees=True).as_matrix()
+            # 普通节点
+            # rotation是它自己的旋转
+            rotation = R.from_euler('XYZ', single_frame_motion_data[frame_id, 3*(idx-idx_offset+1):3*(idx-idx_offset+2)],degrees=True).as_matrix()
+            # rot_matrix_p是它父节点的朝向，因为取的已经是joint_orientations而不是single_frame_motion_data了
             rot_matrix_p=R.from_quat(joint_orientations[parent_idx]).as_matrix()
+            # tmp是它自己的「朝向」
             tmp = rot_matrix_p.dot(rotation)
+            # 存进朝向list
             joint_orientations[idx]=R.from_matrix(tmp).as_quat()
-
+            # 位置，要在父节点位置的基础上，在父节点的坐标系下计算偏移
             joint_positions[idx] = joint_positions[parent_idx]+rot_matrix_p.dot(offset)
 
     return joint_positions, joint_orientations
@@ -133,12 +140,47 @@ def part3_retarget_func(T_pose_bvh_path, A_pose_bvh_path):
     将 A-pose的bvh重定向到T-pose上
     输入: 两个bvh文件的路径
     输出: 
-        motion_data: np.ndarray，形状为(N,X)的numpy数组，其中N为帧数，X为Channel数。retarget后的运动数据
+        single_frame_motion_data: np.ndarray，形状为(N,X)的numpy数组，其中N为帧数，X为Channel数。retarget后的运动数据
     Tips:
         两个bvh的joint name顺序可能不一致哦(
         as_euler时也需要大写的XYZ
     """
-    T_data=load_motion_data(T_pose_bvh_path)
-    A_data=load_motion_data(A_pose_bvh_path)
-    motion_data = None
-    return motion_data
+    T_data=load_single_frame_motion_data(T_pose_bvh_path)
+    A_data=load_single_frame_motion_data(A_pose_bvh_path)
+    T_joint_names, _, _=part1_calculate_T_pose(T_pose_bvh_path)
+    A_joint_names, _, _=part1_calculate_T_pose(A_pose_bvh_path)
+    # lShoulderInx=A_joint_names.index("lShoulder")
+    # rShoulderInx=A_joint_names.index("rShoulder")
+    lShoulderMatrix= R.from_euler('XYZ', [0,0,45],degrees=True).as_matrix()
+    rShoulderMatrix= R.from_euler('XYZ', [0,0,-45],degrees=True).as_matrix()
+    # 因为是根据T的拿A的，中间需要掠过的end数不一定相等
+    A_name_skip_cnt=[]
+    ignore_cnt=0
+    for joint_name in A_joint_names:
+        if joint_name.endswith('_end'):
+                ignore_cnt=ignore_cnt+1
+        A_name_skip_cnt.append(ignore_cnt)
+    motion_data = []
+    for frame_id in range(T_data.shape[0]):
+        single_frame_motion_data = []
+        for joint_name in T_joint_names:
+            A_pose_index=A_joint_names.index(joint_name)
+            if joint_name=="RootJoint":
+                # rootJoint
+                single_frame_motion_data.append(np.array(A_data[frame_id,:3]).reshape(1,-1))
+                single_frame_motion_data.append(np.array(A_data[frame_id,3:6]).reshape(1,-1))
+            elif joint_name=="lShoulder":
+                original_data=R.from_euler('XYZ', A_data[frame_id,(A_pose_index-A_name_skip_cnt[A_pose_index]+1)*3:(A_pose_index-A_name_skip_cnt[A_pose_index]+2)*3],degrees=True).as_matrix()
+                result_data=original_data.dot(lShoulderMatrix)
+                single_frame_motion_data.append(np.array([R.from_matrix(result_data).as_euler('XYZ', degrees=True)]))
+            elif joint_name=="rShoulder":
+                original_data=R.from_euler('XYZ', A_data[frame_id,(A_pose_index-A_name_skip_cnt[A_pose_index]+1)*3:(A_pose_index-A_name_skip_cnt[A_pose_index]+2)*3],degrees=True).as_matrix()
+                result_data=original_data.dot(rShoulderMatrix)
+                single_frame_motion_data.append(np.array([R.from_matrix(result_data).as_euler('XYZ', degrees=True)]))
+            elif joint_name.endswith('_end'):
+                continue
+            else:
+                single_frame_motion_data.append(np.array(A_data[frame_id,(A_pose_index-A_name_skip_cnt[A_pose_index]+1)*3:(A_pose_index-A_name_skip_cnt[A_pose_index]+2)*3]).reshape(1,-1))
+        single_frame_motion_data = np.concatenate(single_frame_motion_data, axis=0)
+        motion_data.append(single_frame_motion_data)
+    return np.array(motion_data)
