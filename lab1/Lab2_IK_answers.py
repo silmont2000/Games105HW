@@ -32,16 +32,18 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
         joint_orientations: 计算得到的关节朝向，是一个numpy数组，shape为(M, 4)，M为关节数
     """
     path,path_name,path1,path2=meta_data.get_path_from_root_to_end()
-    path_end=path1[0]+1 ## lWrist_end
-    for idx in range(0,len(path1)):
+    parent_idx=meta_data.joint_parent
+    path_end_id=path1[0] ## lWrist_end 就是手掌 只是加了end不叫hand而已
+    for idx in range(1,len(path1)):
         path_joint_id=path1[idx]
+        parent_joint_id=parent_idx[idx]
         next_joint_id=0
-        if idx==0:
-            next_joint_id=path_end
-        else:
-            next_joint_id=path1[idx-1]
+        # if idx==0:
+        #     next_joint_id=path_end_id
+        # else:
+        #     next_joint_id=path1[idx-1]
 
-        vec_to_end=joint_positions[path_joint_id]-joint_positions[path_end]
+        vec_to_end=joint_positions[path_joint_id]-joint_positions[path_end_id]
         vec_to_target=joint_positions[path_joint_id]-target_pose
         rot_matrix=rotation_matrix(vec_to_target,vec_to_end)
 
@@ -50,10 +52,16 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
         calculated_orientation=rot_matrix_R.dot(initial_orientation)
         joint_orientations[path_joint_id]=R.from_matrix(calculated_orientation).as_quat()
 
-        if idx==1:
-            vec_to_next=joint_positions[next_joint_id]-joint_positions[path_joint_id]
-            calculated_vec_to_next=rot_matrix.dot(vec_to_next)
-            joint_positions[next_joint_id]=calculated_vec_to_next+joint_positions[path_joint_id]
+        # for j in range(idx-1,-2,-1):
+        #     if idx!=0:
+        #         break
+        #     if j<0:
+        #         next_joint_id=path_end_id
+        #     else:
+        #         next_joint_id=path1[j]
+        #     vec_to_next=joint_positions[next_joint_id]-joint_positions[path_joint_id]
+        #     calculated_vec_to_next=rot_matrix.dot(vec_to_next)
+        #     joint_positions[next_joint_id]=calculated_vec_to_next+joint_positions[path_joint_id]
 
     return joint_positions, joint_orientations
 
