@@ -3,10 +3,12 @@ from scipy.spatial.transform import Rotation as R
 
 
 def rotation_matrix(a, b):
-    # 计算旋转轴
+    # 如果不是单位长度，会导致旋转矩阵不是正交矩阵，向量旋转后的长度也会被改变
+    a=a/np.linalg.norm(a)
+    b=b/np.linalg.norm(b)
+    # 计算旋转轴,这里也要单位长度，否则越算越短
     n = np.cross(a, b)
-    # 如果这里不是单位长度，会导致旋转矩阵不是正交矩阵，向量旋转后的长度也会被改变
-    n = n/np.linalg.norm(n)
+    # n=n/np.linalg.norm(n)
     # 计算夹角
     cos_theta = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
     sin_theta = np.linalg.norm(n) / (np.linalg.norm(a) * np.linalg.norm(b))
@@ -40,7 +42,7 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
         # k：循环次数
         # for idx in range(0,len(path1)):
         # debug
-        for idx in range(0,3):
+        for idx in range(0,5):
             # idx：路径上的第几个节点了，第0个是手，最后一个是root
             path_joint_id=path1[idx]
 
@@ -48,7 +50,7 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
             vec_to_target=target_pose-joint_positions[path_joint_id]
             # 获取end->target的旋转矩阵
             # debug
-            # rot_matrix=rotation_matrix(np.array([1,0,0]),np.array([1,2,0]))
+            # rot_matrix=rotation_matrix(np.array([1,0,0]),np.array([1,1,0]))
             rot_matrix=rotation_matrix(vec_to_end,vec_to_target)
 
             # 计算前的朝向。这个朝向实际上是累乘到父节点的
@@ -76,7 +78,9 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
                 # 指向下个节点的向量
                 vec_to_next=joint_positions[next_joint_id]-joint_positions[path_joint_id]
                 # 左乘，改变向量
-                calculated_vec_to_next=rot_matrix.dot(vec_to_next)
+                calculated_vec_to_next_dir=rot_matrix.dot(vec_to_next)
+                calculated_vec_to_next=calculated_vec_to_next_dir/np.linalg.norm(calculated_vec_to_next_dir)*np.linalg.norm(vec_to_next)
+                print(np.linalg.norm(vec_to_next),np.linalg.norm(calculated_vec_to_next))
                 # 还原回去
                 joint_positions[next_joint_id]=calculated_vec_to_next+joint_positions[path_joint_id]
             joint_orientations[path_end_id]=joint_orientations[path1[1]]
