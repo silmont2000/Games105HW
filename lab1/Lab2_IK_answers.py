@@ -5,6 +5,8 @@ from scipy.spatial.transform import Rotation as R
 def rotation_matrix(a, b):
     # 计算旋转轴
     n = np.cross(a, b)
+    # 如果这里不是单位长度，会导致旋转矩阵不是正交矩阵，向量旋转后的长度也会被改变
+    n = n/np.linalg.norm(n)
     # 计算夹角
     cos_theta = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
     sin_theta = np.linalg.norm(n) / (np.linalg.norm(a) * np.linalg.norm(b))
@@ -34,35 +36,51 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
     path,path_name,path1,path2=meta_data.get_path_from_root_to_end()
     parent_idx=meta_data.joint_parent
     path_end_id=path1[0] ## lWrist_end 就是手掌 只是加了end不叫hand而已
-    for idx in range(1,len(path1)):
-        path_joint_id=path1[idx]
-        parent_joint_id=parent_idx[idx]
-        next_joint_id=0
-        # if idx==0:
-        #     next_joint_id=path_end_id
-        # else:
-        #     next_joint_id=path1[idx-1]
+    for k in range(0,1):
+        # k：循环次数
+        # for idx in range(0,len(path1)):
+        # debug
+        for idx in range(0,3):
+            # idx：路径上的第几个节点了，第0个是手，最后一个是root
+            path_joint_id=path1[idx]
 
-        vec_to_end=joint_positions[path_joint_id]-joint_positions[path_end_id]
-        vec_to_target=joint_positions[path_joint_id]-target_pose
-        rot_matrix=rotation_matrix(vec_to_target,vec_to_end)
+            vec_to_end=joint_positions[path_end_id]-joint_positions[path_joint_id]
+            vec_to_target=target_pose-joint_positions[path_joint_id]
+            # 获取end->target的旋转矩阵
+            # debug
+            # rot_matrix=rotation_matrix(np.array([1,0,0]),np.array([1,2,0]))
+            rot_matrix=rotation_matrix(vec_to_end,vec_to_target)
 
-        initial_orientation=R.from_quat(joint_orientations[path_joint_id]).as_matrix()
-        rot_matrix_R=R.from_matrix(rotation_matrix(vec_to_end,vec_to_target)).as_matrix()
-        calculated_orientation=rot_matrix_R.dot(initial_orientation)
-        joint_orientations[path_joint_id]=R.from_matrix(calculated_orientation).as_quat()
+            # 计算前的朝向。这个朝向实际上是累乘到父节点的
+            initial_orientation=R.from_quat(joint_orientations[path_joint_id]).as_matrix()
+            # 旋转矩阵，格式换算
+            rot_matrix_R=R.from_matrix(rot_matrix).as_matrix()
+            # 计算后的朝向
+            calculated_orientation=rot_matrix_R.dot(initial_orientation)
+            # 写回结果列表
+            joint_orientations[path_joint_id]=R.from_matrix(calculated_orientation).as_quat()
 
-        # for j in range(idx-1,-2,-1):
-        #     if idx!=0:
-        #         break
-        #     if j<0:
-        #         next_joint_id=path_end_id
-        #     else:
-        #         next_joint_id=path1[j]
-        #     vec_to_next=joint_positions[next_joint_id]-joint_positions[path_joint_id]
-        #     calculated_vec_to_next=rot_matrix.dot(vec_to_next)
-        #     joint_positions[next_joint_id]=calculated_vec_to_next+joint_positions[path_joint_id]
+            # 子节点的朝向也会有所变化
+            # idx-1 就是当前节点的下一个更接近尾端的节点，一直向前迭代到1
+            for i in range(idx-1,0,-1):
+                path_joint_id=path1[i]
+                # 遍历路径后的节点,都乘上旋转
+                joint_orientations[path_joint_id]=R.from_matrix(rot_matrix_R.dot(R.from_quat(joint_orientations[path_joint_id]).as_matrix())).as_quat()
 
+            path_joint_id=path1[idx]
+            # 修改子节点的位置
+            for i in range(idx-1,-1,-1):
+                # path_joint_id=path1[i]
+                # 节点id
+                next_joint_id=path1[i]
+                # 指向下个节点的向量
+                vec_to_next=joint_positions[next_joint_id]-joint_positions[path_joint_id]
+                # 左乘，改变向量
+                calculated_vec_to_next=rot_matrix.dot(vec_to_next)
+                # 还原回去
+                joint_positions[next_joint_id]=calculated_vec_to_next+joint_positions[path_joint_id]
+            joint_orientations[path_end_id]=joint_orientations[path1[1]]
+            
     return joint_positions, joint_orientations
 
 def part2_inverse_kinematics(meta_data, joint_positions, joint_orientations, relative_x, relative_z, target_height):
@@ -78,3 +96,4 @@ def bonus_inverse_kinematics(meta_data, joint_positions, joint_orientations, lef
     """
     
     return joint_positions, joint_orientations
+    
