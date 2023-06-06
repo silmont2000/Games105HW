@@ -39,9 +39,13 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
     parent_idx=meta_data.joint_parent
 
     # local_rotation是用于最后计算不在链上的节点
+    no_caled_orientation=joint_orientations
     local_rotation = [R.from_quat(joint_orientations[parent_idx[i]]).inv() * R.from_quat(joint_orientations[i]) for i
                       in range(len(joint_orientations))]
     local_rotation[0] = R.from_quat(joint_orientations[0])
+    local_position = [joint_positions[i]-joint_positions[parent_idx[i]] for i
+                      in range(len(joint_orientations))]
+    local_position[0] = joint_positions[0]
 
     path_end_id=path1[0] ## lWrist_end 就是手掌 只是加了end不叫hand而已
     for k in range(0,300):
@@ -96,6 +100,10 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
             parent_rot_matrix=R.from_quat(joint_orientations[parent_idx[k]]).as_matrix()
             re=local_rot_matrix.dot(parent_rot_matrix)
             joint_orientations[k]=R.from_matrix(re).as_quat()
+
+            initial_o=R.from_quat(no_caled_orientation[parent_idx[k]]).as_matrix()
+            delta_orientation= np.linalg.inv(initial_o).dot(re)
+            joint_positions[k]=joint_positions[parent_idx[k]]+delta_orientation.dot(local_position[k])
 
     return joint_positions, joint_orientations
 
