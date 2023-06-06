@@ -37,12 +37,17 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
     """
     path,path_name,path1,path2=meta_data.get_path_from_root_to_end()
     parent_idx=meta_data.joint_parent
+
+    # local_rotation是用于最后计算不在链上的节点
+    local_rotation = [R.from_quat(joint_orientations[parent_idx[i]]).inv() * R.from_quat(joint_orientations[i]) for i
+                      in range(len(joint_orientations))]
+    local_rotation[0] = R.from_quat(joint_orientations[0])
+
     path_end_id=path1[0] ## lWrist_end 就是手掌 只是加了end不叫hand而已
-    for k in range(0,1):
+    for k in range(0,300):
         # k：循环次数
-        # for idx in range(0,len(path1)):
+        for idx in range(0,len(path1)):
         # debug
-        for idx in range(0,5):
             # idx：路径上的第几个节点了，第0个是手，最后一个是root
             path_joint_id=path1[idx]
 
@@ -80,11 +85,18 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
                 # 左乘，改变向量
                 calculated_vec_to_next_dir=rot_matrix.dot(vec_to_next)
                 calculated_vec_to_next=calculated_vec_to_next_dir/np.linalg.norm(calculated_vec_to_next_dir)*np.linalg.norm(vec_to_next)
-                print(np.linalg.norm(vec_to_next),np.linalg.norm(calculated_vec_to_next))
                 # 还原回去
                 joint_positions[next_joint_id]=calculated_vec_to_next+joint_positions[path_joint_id]
             joint_orientations[path_end_id]=joint_orientations[path1[1]]
-            
+    for k in range(len(joint_orientations)):
+        if k in  path1:
+            pass
+        else:
+            local_rot_matrix=local_rotation[k].as_matrix()
+            parent_rot_matrix=R.from_quat(joint_orientations[parent_idx[k]]).as_matrix()
+            re=local_rot_matrix.dot(parent_rot_matrix)
+            joint_orientations[k]=R.from_matrix(re).as_quat()
+
     return joint_positions, joint_orientations
 
 def part2_inverse_kinematics(meta_data, joint_positions, joint_orientations, relative_x, relative_z, target_height):
