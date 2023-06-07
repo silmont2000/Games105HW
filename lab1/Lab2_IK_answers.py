@@ -47,7 +47,7 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
     local_position[0] = joint_positions[0]
 
     path_end_id=path1[0] ## lWrist_end 就是手掌 只是加了end不叫hand而已
-    for k in range(0,1):
+    for k in range(0,300):
         # k：循环次数
         # 正向的，path1是从手到root之前
         for idx in range(0,len(path1)):
@@ -94,24 +94,23 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
         
         # path2是从脚到root，所以要倒着
         # debug
-        for idx in range(len(path2)-1,len(path2)-2,-1): # len(path2)-1 --> 0
-        # for idx in range(len(path2)-1,-1,-1): # len(path2)-1 --> 0
-            # idx：路径上的第几个节点了，第0个是手，最后一个是root
+        # for idx in range(len(path2)-1,len(path2)-3,-1): # len(path2)-1 --> 0
+        for idx in range(len(path2)-1,0,-1): # len(path2)-1 --> 0
             path_joint_id=path2[idx]
-            parient_joint_id=parent_idx[path_joint_id]
+            parient_joint_id=max(parent_idx[path_joint_id],0)
 
             vec_to_end=joint_positions[path_end_id]-joint_positions[path_joint_id]
             vec_to_target=target_pose-joint_positions[path_joint_id]
             # 获取end->target的旋转矩阵
             # debug
-            # rot_matrix=rotation_matrix(np.array([1,0,0]),np.array([1,1,0]))
+            # rot_matrix=rotation_matrix(np.array([0.72,0.35,0]),np.array([0.5,0.35,0]))
+            # rot_matrix=np.linalg.inv(rot_matrix)
             rot_matrix=rotation_matrix(vec_to_end,vec_to_target)
-            joint_orientations[path_joint_id]=R.from_matrix(rot_matrix).as_quat()
 
             # 计算前的朝向。注意path2是反方向的，要改父节点才行
             initial_orientation=R.from_quat(joint_orientations[path_joint_id]).as_matrix()
             # 旋转矩阵，格式换算
-            rot_matrix_R=R.from_matrix(rot_matrix).as_matrix()
+            rot_matrix_R= R.from_matrix(rot_matrix).as_matrix()
             # 计算后的朝向
             calculated_orientation=rot_matrix_R.dot(initial_orientation)
             # 写回结果列表
@@ -128,10 +127,10 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
                 # 遍历路径后的节点,都乘上旋转
                 joint_orientations[path_joint_id]=R.from_matrix(rot_matrix_R.dot(R.from_quat(joint_orientations[path_joint_id]).as_matrix())).as_quat()
 
-            path_joint_id=path2[idx]
+            path_joint_id=path2[max(idx-1,0)]
             # 修改父节点，或者说更靠近手的那些节点的位置
             # path2上的
-            for i in range(idx+1,len(path2)):
+            for i in range(idx,len(path2)):
                 # path_joint_id=path1[i]
                 # 节点id
                 prev_joint_id=path2[i]
@@ -142,7 +141,7 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
                 # 防止长度不对
                 calculated_vec_to_next=calculated_vec_to_next_dir/np.linalg.norm(calculated_vec_to_next_dir)*np.linalg.norm(vec_to_next)
                 # 还原回去
-                joint_positions[prev_joint_id]=calculated_vec_to_next+joint_positions[path_joint_id]
+                joint_positions[prev_joint_id]=joint_positions[path_joint_id]+calculated_vec_to_next
             # path1上的
             for i in range(len(path1)-1,-1,-1):
                 # path_joint_id=path1[i]
@@ -167,7 +166,7 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
             break
     print("距离",cur_dis,"迭代了",k,"次")
     for k in range(len(joint_orientations)):
-        if k in  path:
+        if k in path:
             pass
         elif k==0:
             # 要单独处理，不然跟节点的-1就会变成从最后一个节点开始算
