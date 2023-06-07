@@ -168,8 +168,8 @@ def main():
     viewer = SimpleViewer()
     
     # part1
-    part1_simple(viewer, np.array([0.5, 0.75, 0.5]))
-    # part1_hard(viewer, np.array([0.5, 0.5, 0.5]))
+    # part1_simple(viewer, np.array([0.5, 0.75, 0.5]))
+    part1_hard(viewer, np.array([0.5, 0.5, 0.5]))
     # part1_animation(viewer, np.array([0.5, 0.5, 0.5]))
     
     # part2

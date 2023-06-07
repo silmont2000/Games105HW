@@ -47,8 +47,9 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
     local_position[0] = joint_positions[0]
 
     path_end_id=path1[0] ## lWrist_end 就是手掌 只是加了end不叫hand而已
-    for k in range(0,300):
+    for k in range(0,1):
         # k：循环次数
+        # 正向的，path1是从手到root之前
         for idx in range(0,len(path1)):
             # idx：路径上的第几个节点了，第0个是手，最后一个是root
             path_joint_id=path1[idx]
@@ -90,6 +91,76 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
                 calculated_vec_to_next=calculated_vec_to_next_dir/np.linalg.norm(calculated_vec_to_next_dir)*np.linalg.norm(vec_to_next)
                 # 还原回去
                 joint_positions[next_joint_id]=calculated_vec_to_next+joint_positions[path_joint_id]
+        
+        # path2是从脚到root，所以要倒着
+        # debug
+        for idx in range(len(path2)-1,len(path2)-2,-1): # len(path2)-1 --> 0
+        # for idx in range(len(path2)-1,-1,-1): # len(path2)-1 --> 0
+            # idx：路径上的第几个节点了，第0个是手，最后一个是root
+            path_joint_id=path2[idx]
+            parient_joint_id=parent_idx[path_joint_id]
+
+            vec_to_end=joint_positions[path_end_id]-joint_positions[path_joint_id]
+            vec_to_target=target_pose-joint_positions[path_joint_id]
+            # 获取end->target的旋转矩阵
+            # debug
+            # rot_matrix=rotation_matrix(np.array([1,0,0]),np.array([1,1,0]))
+            rot_matrix=rotation_matrix(vec_to_end,vec_to_target)
+            joint_orientations[path_joint_id]=R.from_matrix(rot_matrix).as_quat()
+
+            # 计算前的朝向。注意path2是反方向的，要改父节点才行
+            initial_orientation=R.from_quat(joint_orientations[path_joint_id]).as_matrix()
+            # 旋转矩阵，格式换算
+            rot_matrix_R=R.from_matrix(rot_matrix).as_matrix()
+            # 计算后的朝向
+            calculated_orientation=rot_matrix_R.dot(initial_orientation)
+            # 写回结果列表
+            joint_orientations[path_joint_id]=R.from_matrix(calculated_orientation).as_quat()
+
+            # 其他节点的朝向也会有所变化
+            for i in range(idx+1,len(path2)):
+                path_joint_id=path2[i] 
+                joint_orientations[path_joint_id]=R.from_matrix(rot_matrix_R.dot(R.from_quat(joint_orientations[path_joint_id]).as_matrix())).as_quat()
+
+            # idx-1 就是当前节点的下一个更接近尾端的节点，一直向前迭代到1
+            for i in range(len(path1)-1,0,-1):
+                path_joint_id=path1[i]
+                # 遍历路径后的节点,都乘上旋转
+                joint_orientations[path_joint_id]=R.from_matrix(rot_matrix_R.dot(R.from_quat(joint_orientations[path_joint_id]).as_matrix())).as_quat()
+
+            path_joint_id=path2[idx]
+            # 修改父节点，或者说更靠近手的那些节点的位置
+            # path2上的
+            for i in range(idx+1,len(path2)):
+                # path_joint_id=path1[i]
+                # 节点id
+                prev_joint_id=path2[i]
+                # 指向上一个节点的向量
+                vec_to_next=joint_positions[prev_joint_id]-joint_positions[path_joint_id]
+                # 左乘，改变向量
+                calculated_vec_to_next_dir=rot_matrix.dot(vec_to_next)
+                # 防止长度不对
+                calculated_vec_to_next=calculated_vec_to_next_dir/np.linalg.norm(calculated_vec_to_next_dir)*np.linalg.norm(vec_to_next)
+                # 还原回去
+                joint_positions[prev_joint_id]=calculated_vec_to_next+joint_positions[path_joint_id]
+            # path1上的
+            for i in range(len(path1)-1,-1,-1):
+                # path_joint_id=path1[i]
+                # 节点id
+                prev_joint_id=path1[i]
+                # 指向上一个节点的向量
+                vec_to_next=joint_positions[prev_joint_id]-joint_positions[path_joint_id]
+                # 左乘，改变向量
+                calculated_vec_to_next_dir=rot_matrix.dot(vec_to_next)
+                # 防止长度不对
+                calculated_vec_to_next=calculated_vec_to_next_dir/np.linalg.norm(calculated_vec_to_next_dir)*np.linalg.norm(vec_to_next)
+                # 还原回去
+                joint_positions[prev_joint_id]=calculated_vec_to_next+joint_positions[path_joint_id]
+
+        # debug
+        # rot_matrix=rotation_matrix(np.array([1,0,0]),np.array([1,0,1]))
+        # joint_orientations[0]=R.from_matrix(rot_matrix).as_quat()
+        # joint_orientations[1]=R.from_matrix(rot_matrix).as_quat()
         joint_orientations[path_end_id]=joint_orientations[path1[1]]
         cur_dis=np.linalg.norm(joint_positions[path_end_id]-target_pose)
         if cur_dis<0.01:
