@@ -1,17 +1,16 @@
 import numpy as np
 from scipy.spatial.transform import Rotation as R
-
+import copy
 
 def rotation_matrix(a, b):
-    # 如果不是单位长度，会导致旋转矩阵不是正交矩阵，向量旋转后的长度也会被改变
     a=a/np.linalg.norm(a)
     b=b/np.linalg.norm(b)
-    # 计算旋转轴,这里也要单位长度，否则越算越短
     n = np.cross(a, b)
+    # 旋转矩阵是正交矩阵，矩阵的每一行每一列的模，都为1；并且任意两个列向量或者任意两个行向量都是正交的。
     # n=n/np.linalg.norm(n)
     # 计算夹角
-    cos_theta = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-    sin_theta = np.linalg.norm(n) / (np.linalg.norm(a) * np.linalg.norm(b))
+    cos_theta = np.dot(a, b)
+    sin_theta = np.linalg.norm(n)
     theta = np.arctan2(sin_theta, cos_theta)
     # 构造旋转矩阵
     c = np.cos(theta)
@@ -39,7 +38,7 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
     parent_idx=meta_data.joint_parent
 
     # local_rotation是用于最后计算不在链上的节点
-    no_caled_orientation=joint_orientations
+    no_caled_orientation=copy.deepcopy(joint_orientations)
     local_rotation = [R.from_quat(joint_orientations[parent_idx[i]]).inv() * R.from_quat(joint_orientations[i]) for i
                       in range(len(joint_orientations))]
     local_rotation[0] = R.from_quat(joint_orientations[0])
@@ -51,7 +50,6 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
     for k in range(0,300):
         # k：循环次数
         for idx in range(0,len(path1)):
-        # debug
             # idx：路径上的第几个节点了，第0个是手，最后一个是root
             path_joint_id=path1[idx]
 
@@ -88,12 +86,20 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
                 vec_to_next=joint_positions[next_joint_id]-joint_positions[path_joint_id]
                 # 左乘，改变向量
                 calculated_vec_to_next_dir=rot_matrix.dot(vec_to_next)
+                # 防止长度不对
                 calculated_vec_to_next=calculated_vec_to_next_dir/np.linalg.norm(calculated_vec_to_next_dir)*np.linalg.norm(vec_to_next)
                 # 还原回去
                 joint_positions[next_joint_id]=calculated_vec_to_next+joint_positions[path_joint_id]
-            joint_orientations[path_end_id]=joint_orientations[path1[1]]
+        joint_orientations[path_end_id]=joint_orientations[path1[1]]
+        cur_dis=np.linalg.norm(joint_positions[path_end_id]-target_pose)
+        if cur_dis<0.01:
+            break
+    print("距离",cur_dis,"迭代了",k,"次")
     for k in range(len(joint_orientations)):
-        if k in  path1:
+        if k in  path:
+            pass
+        elif k==0:
+            # 要单独处理，不然跟节点的-1就会变成从最后一个节点开始算
             pass
         else:
             local_rot_matrix=local_rotation[k].as_matrix()
@@ -102,7 +108,8 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
             joint_orientations[k]=R.from_matrix(re).as_quat()
 
             initial_o=R.from_quat(no_caled_orientation[parent_idx[k]]).as_matrix()
-            delta_orientation= np.linalg.inv(initial_o).dot(re)
+            delta_orientation = np.dot(re, np.linalg.inv(initial_o))
+
             joint_positions[k]=joint_positions[parent_idx[k]]+delta_orientation.dot(local_position[k])
 
     return joint_positions, joint_orientations
