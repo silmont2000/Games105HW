@@ -38,7 +38,16 @@ def rotation_matrix(a, b):
                                  [n[0]*n[1]*v+n[2]*s, n[1]*n[1]*v+c, n[1]*n[2]*v-n[0]*s],
                                  [n[0]*n[2]*v-n[1]*s, n[1]*n[2]*v+n[0]*s, n[2]*n[2]*v+c]])
     return rotation_matrix
+
+def inv_safe(data):
+    # return R.from_quat(data).inv()
+    if np.allclose(data, [0, 0, 0, 0]):
+        return np.eye(3)
+    else:
+        return np.linalg.inv(R.from_quat(data).as_matrix())
+    
 def from_quat_safe(data):
+    # return R.from_quat(data)
     if np.allclose(data, [0, 0, 0, 0]):
         return np.eye(3)
     else:
@@ -59,12 +68,12 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
     """
     path,path_name,path1,path2=meta_data.get_path_from_root_to_end()
     parent_idx=meta_data.joint_parent
-
     # local_rotation是用于最后计算不在链上的节点
     no_caled_orientation=copy.deepcopy(joint_orientations)
-    local_rotation = [R.from_quat(joint_orientations[parent_idx[i]]).inv() * R.from_quat(joint_orientations[i]) for i
+    local_rotation = [
+        R.from_matrix(inv_safe(joint_orientations[parent_idx[i]]) * from_quat_safe(joint_orientations[i])).as_quat() for i
                       in range(len(joint_orientations))]
-    local_rotation[0] = R.from_quat(joint_orientations[0])
+    local_rotation[0] = R.from_matrix(from_quat_safe(joint_orientations[0])).as_quat()
     local_position = [joint_positions[i]-joint_positions[parent_idx[i]] for i
                       in range(len(joint_orientations))]
     local_position[0] = joint_positions[0]
@@ -85,7 +94,7 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
             rot_matrix=rotation_matrix(vec_to_end,vec_to_target)
 
             # 计算前的朝向。这个朝向实际上是累乘到父节点的
-            initial_orientation=R.from_quat(joint_orientations[path_joint_id]).as_matrix()
+            initial_orientation=from_quat_safe(joint_orientations[path_joint_id])
             # 旋转矩阵，格式换算
             rot_matrix_R=R.from_matrix(rot_matrix).as_matrix()
             # 计算后的朝向
@@ -98,7 +107,7 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
             for i in range(idx-1,0,-1):
                 path_joint_id=path1[i]
                 # 遍历路径后的节点,都乘上旋转
-                joint_orientations[path_joint_id]=R.from_matrix(rot_matrix_R.dot(R.from_quat(joint_orientations[path_joint_id]).as_matrix())).as_quat()
+                joint_orientations[path_joint_id]=R.from_matrix(rot_matrix_R.dot(from_quat_safe(joint_orientations[path_joint_id]))).as_quat()
 
             path_joint_id=path1[idx]
             # 修改子节点的位置
@@ -131,7 +140,7 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
             rot_matrix=rotation_matrix(vec_to_end,vec_to_target)
 
             # 计算前的朝向。注意path2是反方向的，要改父节点才行
-            initial_orientation=R.from_quat(joint_orientations[path_joint_id]).as_matrix()
+            initial_orientation=from_quat_safe(joint_orientations[path_joint_id])
             # 旋转矩阵，格式换算
             rot_matrix_R= R.from_matrix(rot_matrix).as_matrix()
             # 计算后的朝向
@@ -142,13 +151,13 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
             # 其他节点的朝向也会有所变化
             for i in range(idx+1,len(path2)):
                 path_joint_id=path2[i] 
-                joint_orientations[path_joint_id]=R.from_matrix(rot_matrix_R.dot(R.from_quat(joint_orientations[path_joint_id]).as_matrix())).as_quat()
+                joint_orientations[path_joint_id]=R.from_matrix(rot_matrix_R.dot(from_quat_safe(joint_orientations[path_joint_id]))).as_quat()
 
             # idx-1 就是当前节点的下一个更接近尾端的节点，一直向前迭代到1
             for i in range(len(path1)-1,0,-1):
                 path_joint_id=path1[i]
                 # 遍历路径后的节点,都乘上旋转
-                joint_orientations[path_joint_id]=R.from_matrix(rot_matrix_R.dot(R.from_quat(joint_orientations[path_joint_id]).as_matrix())).as_quat()
+                joint_orientations[path_joint_id]=R.from_matrix(rot_matrix_R.dot(from_quat_safe(joint_orientations[path_joint_id]))).as_quat()
 
             path_joint_id=path2[max(idx-1,0)]
             # 修改父节点，或者说更靠近手的那些节点的位置
@@ -188,6 +197,7 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
         if cur_dis<0.01:
             break
     print("距离",cur_dis,"迭代了",k,"次")
+    # 更新不在链上的节点
     for k in range(len(joint_orientations)):
         if k in path:
             pass
@@ -195,14 +205,22 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
             # 要单独处理，不然跟节点的-1就会变成从最后一个节点开始算
             pass
         else:
-            local_rot_matrix=local_rotation[k].as_matrix()
-            parent_rot_matrix=R.from_quat(joint_orientations[parent_idx[k]]).as_matrix()
-            re=local_rot_matrix.dot(parent_rot_matrix)
+            # 先获取局部旋转
+            # 这里如果直接存的就是矩阵就会有问题？
+            local_rot_matrix=R.from_quat(local_rotation[k]).as_matrix()
+            # 再获取我们已经计算了的父节点的旋转
+            parent_rot_matrix=from_quat_safe(joint_orientations[parent_idx[k]])
+            # 乘起来
+            # re=local_rot_matrix.dot(parent_rot_matrix)
+            re=parent_rot_matrix.dot(local_rot_matrix)
             joint_orientations[k]=R.from_matrix(re).as_quat()
 
-            initial_o=R.from_quat(no_caled_orientation[parent_idx[k]]).as_matrix()
+            # 父节点没旋转的时候是：
+            initial_o=from_quat_safe(no_caled_orientation[parent_idx[k]])
+            # 父节点的旋转*delta_orientation=子节点旋转
+            # 反求delta_orientation
             delta_orientation = np.dot(re, np.linalg.inv(initial_o))
-
+            # 父节点的位置加原本基础上的旋转
             joint_positions[k]=joint_positions[parent_idx[k]]+delta_orientation.dot(local_position[k])
 
     return joint_positions, joint_orientations
