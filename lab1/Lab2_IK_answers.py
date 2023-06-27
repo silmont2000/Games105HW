@@ -2,6 +2,24 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 import copy
 
+
+def load_motion_data(bvh_file_path):
+    """part2 辅助函数，读取bvh文件"""
+    with open(bvh_file_path, 'r') as f:
+        lines = f.readlines()
+        for i in range(len(lines)):
+            if lines[i].startswith('Frame Time'):
+                break
+        motion_data = []
+        for line in lines[i+1:]:
+            data = [float(x) for x in line.split()]
+            if len(data) == 0:
+                break
+            motion_data.append(np.array(data).reshape(1,-1))
+        motion_data = np.concatenate(motion_data, axis=0)
+    return motion_data
+
+
 def rotation_matrix(a, b):
     a=a/np.linalg.norm(a)
     b=b/np.linalg.norm(b)
@@ -20,6 +38,11 @@ def rotation_matrix(a, b):
                                  [n[0]*n[1]*v+n[2]*s, n[1]*n[1]*v+c, n[1]*n[2]*v-n[0]*s],
                                  [n[0]*n[2]*v-n[1]*s, n[1]*n[2]*v+n[0]*s, n[2]*n[2]*v+c]])
     return rotation_matrix
+def from_quat_safe(data):
+    if np.allclose(data, [0, 0, 0, 0]):
+        return np.eye(3)
+    else:
+        return R.from_quat(data).as_matrix()
 
 def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, target_pose):
     """
@@ -188,7 +211,13 @@ def part2_inverse_kinematics(meta_data, joint_positions, joint_orientations, rel
     """
     输入lWrist相对于RootJoint前进方向的xz偏移，以及目标高度，IK以外的部分与bvh一致
     """
-    
+    # 根节点position好改，先把根节点position改了
+    path, path_name, path1, path2=meta_data.get_path_from_root_to_end()
+    target_pose=joint_positions[0]+np.array([relative_x,target_height-joint_positions[0][1],relative_z])
+    IK_joint_positions, IK_joint_orientations=part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, target_pose)
+    for i in path:
+        joint_positions[i]=IK_joint_positions[i]
+        joint_orientations[i]=IK_joint_orientations[i]
     return joint_positions, joint_orientations
 
 def bonus_inverse_kinematics(meta_data, joint_positions, joint_orientations, left_target_pose, right_target_pose):
